@@ -64,7 +64,11 @@ func NewServer(logger *zap.Logger, static http.FileSystem, service *console.Serv
 
 	fs = http.FileServer(server.static)
 	mux.Handle("/static/", http.StripPrefix("/static", fs))
-	mux.Handle("/", http.HandlerFunc(server.appHandler))
+	mux.Handle("/", http.HandlerFunc(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rcopy := *r
+		rcopy.URL.Path = "/index.html"
+		fs.ServeHTTP(w, &rcopy)
+	})))
 
 	// handle api endpoints
 	mux.Handle("/api/dashboard", http.HandlerFunc(server.dashboardHandler))
@@ -99,30 +103,6 @@ func (server *Server) Run(ctx context.Context) (err error) {
 // Close closes server and underlying listener.
 func (server *Server) Close() error {
 	return server.server.Close()
-}
-
-// appHandler is web app http handler function.
-func (server *Server) appHandler(w http.ResponseWriter, r *http.Request) {
-	file, err := server.static.Open("index.html")
-	if err != nil {
-		server.log.Error("failed to open index.html", zap.Error(err))
-		http.Error(w, http.StatusInteralServerError, "index.html not found")
-		return
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			server.log.Error("failed to close index.html", zap.Error(err))
-		}
-	}()
-
-	stat, err := file.Stat()
-	if err != nil {
-		server.log.Error("failed to stat index.html", zap.Error(err))
-		http.Error(w, http.StatusInteralServerError, "index.html stat failed")
-		return
-	}
-
-	http.ServeContent(w, r, file.Name(), stat.ModTime(), file)
 }
 
 // dashboardHandler handles dashboard API requests.
