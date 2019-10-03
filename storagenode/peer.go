@@ -6,6 +6,8 @@ package storagenode
 import (
 	"context"
 	"net"
+	"net/http"
+	"path/filepath"
 
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
@@ -348,9 +350,16 @@ func New(log *zap.Logger, full *identity.FullIdentity, db DB, revocationDB exten
 			return nil, errs.Combine(err, peer.Close())
 		}
 
+		var static http.StaticDir
+		if config.StaticDir != "" {
+			static = http.Dir(filepath.Join(config.StaticDir, "dist"))
+		} else {
+			static = http.Dir("|")
+		}
+
 		peer.Console.Endpoint = consoleserver.NewServer(
 			peer.Log.Named("console:endpoint"),
-			config.Console,
+			static,
 			peer.Console.Service,
 			peer.Console.Listener,
 		)

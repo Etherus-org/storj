@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/zeebo/errs"
@@ -52,9 +51,10 @@ type Server struct {
 }
 
 // NewServer creates new instance of storagenode console web server.
-func NewServer(logger *zap.Logger, config Config, service *console.Service, listener net.Listener) *Server {
+func NewServer(logger *zap.Logger, static http.FileSystem, service *console.Service, listener net.Listener) *Server {
 	server := Server{
 		log:      logger,
+		static:   static,
 		service:  service,
 		listener: listener,
 	}
@@ -62,15 +62,9 @@ func NewServer(logger *zap.Logger, config Config, service *console.Service, list
 	var fs http.Handler
 	mux := http.NewServeMux()
 
-	// handle static pages
-	if config.StaticDir != "" {
-		server.static = http.Dir(filepath.Join(config.StaticDir, "dist"))
-
-		fs = http.FileServer(server.static)
-
-		mux.Handle("/static/", http.StripPrefix("/static", fs))
-		mux.Handle("/", http.HandlerFunc(server.appHandler))
-	}
+	fs = http.FileServer(server.static)
+	mux.Handle("/static/", http.StripPrefix("/static", fs))
+	mux.Handle("/", http.HandlerFunc(server.appHandler))
 
 	// handle api endpoints
 	mux.Handle("/api/dashboard", http.HandlerFunc(server.dashboardHandler))
