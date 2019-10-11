@@ -5,6 +5,8 @@ package piecestore
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"io"
 	"os"
 	"sync/atomic"
@@ -472,6 +474,9 @@ func (endpoint *Endpoint) doDownload(stream downloadStream) (err error) {
 			// v0 stores this information in SQL
 			info, err := endpoint.store.GetV0PieceInfoDB().Get(ctx, limit.SatelliteId, limit.PieceId)
 			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return rpcstatus.Error(rpcstatus.NotFound, err.Error())
+				}
 				endpoint.log.Error("error getting piece from v0 pieceinfo db", zap.Error(err))
 				return rpcstatus.Error(rpcstatus.Internal, err.Error())
 			}
