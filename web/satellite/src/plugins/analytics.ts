@@ -2,6 +2,7 @@
 // See LICENSE for copying information.
 
 import VueSegmentAnalytics from 'vue-segment-analytics';
+
 import { isDoNotTrackEnabled } from '@/utils/doNotTrack';
 
 const Analytics = {
@@ -10,22 +11,22 @@ const Analytics = {
         const hasSegmentID = options.id && options.id.length > 0;
 
         if (!hasSegmentID) {
-            options.id = "fake id";
+            options.id = 'fake id';
         }
 
-        if ((isDoNotTrack || !hasSegmentID) && options.router != undefined) {
+        if ((isDoNotTrack || !hasSegmentID) && options.router !== undefined) {
             delete options.router;
         }
 
         VueSegmentAnalytics.install(Vue, options);
 
-        /* tslint:disable-next-line */
+        // tslint:disable-next-line
         if (isDoNotTrack || !hasSegmentID) {
             Vue.$segment.methods.forEach(method => {
                 Vue.$segment[method] = () => undefined;
             });
         }
-    }
+    },
 };
 
 export default Analytics;
