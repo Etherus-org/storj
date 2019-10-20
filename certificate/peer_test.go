@@ -4,9 +4,12 @@
 package certificate_test
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/zeebo/errs"
 	"net"
+	"storj.io/storj/storage"
 	"testing"
 	"time"
 
@@ -29,7 +32,211 @@ import (
 	"storj.io/storj/pkg/storj"
 )
 
-// TODO: test sad path
+func TestCertificateSigner_Sign_E2E_error(t *testing.T) {
+	testidentity.SignerVersionsTest(t, func(t *testing.T, _ storj.IDVersion, signer *identity.FullCertificateAuthority) {
+		testidentity.CompleteIdentityVersionsTest(t, func(t *testing.T, _ storj.IDVersion, serverIdent *identity.FullIdentity) {
+			testidentity.CompleteIdentityVersionsTest(t, func(t *testing.T, _ storj.IDVersion, clientIdent *identity.FullIdentity) {
+				scenarios := []struct {
+					name     string
+					errClass errs.Class
+					internal bool
+				}{
+					// custom identity
+					//{
+					//	"invalid difficulty",
+					//	authorization.Error,
+					//	false,
+					//},
+					// no client
+					//{
+					//	"invalid timestamp",
+					//	authorization.Error,
+					//	false,
+					//},
+					{
+						"invalid token",
+						authorization.Error,
+						false,
+					},
+					{
+						"db error",
+						authorization.ErrDB,
+						true,
+					},
+					{
+						"invalid certificate",
+						authorization.Error,
+						false,
+					},
+				}
+
+				ctx := testcontext.New(t)
+				defer ctx.Cleanup()
+
+				caCert := ctx.File("ca.cert")
+				caKey := ctx.File("ca.key")
+				//userID := "user@mail.test"
+				signerCAConfig := identity.FullCAConfig{
+					CertPath: caCert,
+					KeyPath:  caKey,
+				}
+				err := signerCAConfig.Save(signer)
+				require.NoError(t, err)
+
+				authorizationsCfg := authorization.DBConfig{
+					URL: "bolt://" + ctx.File("authorizations.db"),
+				}
+
+				authDB, err := authorization.NewDBFromCfg(authorizationsCfg)
+				require.NoError(t, err)
+				require.NotNil(t, authDB)
+
+				auths, err := authDB.Create(ctx, "user@mail.test", len(scenarios))
+				require.NoError(t, err)
+				require.NotEmpty(t, auths)
+
+				certificatesCfg := certificate.Config{
+					Signer: signerCAConfig,
+					Server: server.Config{
+						Address: "127.0.0.1:0",
+						Config: tlsopts.Config{
+							PeerIDVersions: "*",
+						},
+					},
+					AuthorizationAddr: "127.0.0.1:0",
+				}
+
+				peer, err := certificate.New(zaptest.NewLogger(t), serverIdent, signer, authDB, nil, &certificatesCfg)
+				require.NoError(t, err)
+				require.NotNil(t, peer)
+
+				ctx.Go(func() error {
+					err := peer.Run(ctx)
+					assert.NoError(t, err)
+					return err
+				})
+				defer ctx.Check(peer.Close)
+
+				tlsOptions, err := tlsopts.NewOptions(clientIdent, tlsopts.Config{
+					PeerIDVersions: "*",
+				}, nil)
+				require.NoError(t, err)
+
+				dialer := rpc.NewDefaultDialer(tlsOptions)
+
+				client, err := certificateclient.New(ctx, dialer, peer.Server.Addr().String())
+				require.NoError(t, err)
+				require.NotNil(t, client)
+				defer ctx.Check(client.Close)
+
+				// claim first authorization
+				signedChainBytes, err := client.Sign(ctx, auths[0].Token.String())
+				require.NoError(t, err)
+				require.NotEmpty(t, signedChainBytes)
+
+				t.Run("already claimed", func(t *testing.T) {
+					signedChainBytes, err := client.Sign(ctx, auths[0].Token.String())
+					require.Error(t, err)
+					require.Empty(t, signedChainBytes)
+					require.Contains(t, err.Error(), authorization.Error.New("").Error())
+				})
+
+				t.Run("invalid difficulty", func(t *testing.T) {
+					authorizationsCfg := authorization.DBConfig{
+						URL: "bolt://" + ctx.File("authorizations2.db"),
+					}
+
+					authDB, err := authorization.NewDBFromCfg(authorizationsCfg)
+					require.NoError(t, err)
+					require.NotNil(t, authDB)
+
+					certificatesCfg := certificate.Config{
+						MinDifficulty: 99,
+						Signer:        signerCAConfig,
+						Server: server.Config{
+							Address: "127.0.0.1:0",
+							Config: tlsopts.Config{
+								PeerIDVersions: "*",
+							},
+						},
+						AuthorizationAddr: "127.0.0.1:0",
+					}
+
+					peer, err := certificate.New(zaptest.NewLogger(t), serverIdent, signer, authDB, nil, &certificatesCfg)
+					require.NoError(t, err)
+					require.NotNil(t, peer)
+
+					ctx.Go(func() error {
+						err := peer.Run(ctx)
+						assert.NoError(t, err)
+						return err
+					})
+					defer ctx.Check(peer.Close)
+
+					client, err := certificateclient.New(ctx, dialer, peer.Server.Addr().String())
+					require.NoError(t, err)
+					require.NotNil(t, client)
+					defer ctx.Check(client.Close)
+
+					signedChainBytes, err := client.Sign(ctx, auths[0].Token.String())
+					require.Error(t, err)
+					require.Empty(t, signedChainBytes)
+					require.Contains(t, err.Error(), authorization.Error.New("").Error())
+				})
+
+				t.Run("db error", func(t *testing.T) {
+					authorizationsCfg := authorization.DBConfig{
+						URL: "bolt://" + ctx.File("authorizations3.db"),
+					}
+
+					authDB, err := authorization.NewDBFromCfg(authorizationsCfg)
+					require.NoError(t, err)
+					require.NotNil(t, authDB)
+
+					certificatesCfg := certificate.Config{
+						Signer:        signerCAConfig,
+						Server: server.Config{
+							Address: "127.0.0.1:0",
+							Config: tlsopts.Config{
+								PeerIDVersions: "*",
+							},
+						},
+						AuthorizationAddr: "127.0.0.1:0",
+					}
+
+					peer, err := certificate.New(zaptest.NewLogger(t), serverIdent, signer, authDB, nil, &certificatesCfg)
+					require.NoError(t, err)
+					require.NotNil(t, peer)
+
+					cancelableCtx, cancel := context.WithCancel(ctx)
+					ctx.Go(func() error {
+						err := peer.Run(cancelableCtx)
+						assert.NoError(t, err)
+						return err
+					})
+					defer ctx.Check(peer.Close)
+					_ = cancel
+					//defer cancel()
+
+					//err = authDB.Close()
+					//require.NoError(t, err)
+
+					client, err := certificateclient.New(ctx, dialer, peer.Server.Addr().String())
+					require.NoError(t, err)
+					require.NotNil(t, client)
+					defer ctx.Check(client.Close)
+
+					signedChainBytes, err := client.Sign(ctx, auths[0].Token.String())
+					require.Error(t, err)
+					require.Empty(t, signedChainBytes)
+					require.Contains(t, err.Error(), authorization.ErrDB.New("").Error())
+					require.NotContains(t, err.Error(), storage.ErrKeyNotFound.New("").Error())
+				})
+			})
+		})
+	})
+}
+
 func TestCertificateSigner_Sign_E2E(t *testing.T) {
 	testidentity.SignerVersionsTest(t, func(t *testing.T, _ storj.IDVersion, signer *identity.FullCertificateAuthority) {
 		testidentity.CompleteIdentityVersionsTest(t, func(t *testing.T, _ storj.IDVersion, serverIdent *identity.FullIdentity) {

@@ -5,7 +5,6 @@ package certificate
 
 import (
 	"context"
-
 	"go.uber.org/zap"
 
 	"storj.io/storj/certificate/authorization"
@@ -41,21 +40,21 @@ func (endpoint Endpoint) Sign(ctx context.Context, req *pb.SigningRequest) (_ *p
 	if err != nil {
 		msg := "error getting peer from context"
 		endpoint.log.Error(msg, zap.Error(err))
-		return nil, internalErr(msg)
+		return nil, sanitizeErr(msg, err)
 	}
 
 	peerIdent, err := identity.PeerIdentityFromPeer(peer)
 	if err != nil {
 		msg := "error getting peer identity"
 		endpoint.log.Error(msg, zap.Error(err))
-		return nil, internalErr(msg)
+		return nil, sanitizeErr(msg, err)
 	}
 
 	signedPeerCA, err := endpoint.ca.Sign(peerIdent.CA)
 	if err != nil {
 		msg := "error signing peer CA"
 		endpoint.log.Error(msg, zap.Error(err))
-		return nil, internalErr(msg)
+		return nil, sanitizeErr(msg, err)
 	}
 
 	signedChainBytes := [][]byte{signedPeerCA.Raw, endpoint.ca.Cert.Raw}
@@ -67,19 +66,22 @@ func (endpoint Endpoint) Sign(ctx context.Context, req *pb.SigningRequest) (_ *p
 		MinDifficulty: endpoint.minDifficulty,
 	})
 	if err != nil {
-		endpoint.log.Error(zap.Error(err).String)
-		return nil, internalErr(zap.Error(err).String)
+		msg := "error claiming authorization"
+		endpoint.log.Error(msg, zap.Error(err))
+		return nil, sanitizeErr(msg, err)
 	}
 
 	difficulty, err := peerIdent.ID.Difficulty()
 	if err != nil {
-		endpoint.log.Error(zap.Error(err).String)
-		return nil, internalErr(zap.Error(err).String)
+		msg := "error checking difficulty"
+		endpoint.log.Error(msg, zap.Error(err))
+		return nil, sanitizeErr(msg, err)
 	}
 	token, err := authorization.ParseToken(req.AuthToken)
 	if err != nil {
-		endpoint.log.Error(zap.Error(err).String)
-		return nil, internalErr(zap.Error(err).String)
+		msg := "error parsing auth token"
+		endpoint.log.Error(msg, zap.Error(err))
+		return nil, sanitizeErr(msg, err)
 	}
 	tokenFormatter := authorization.Authorization{
 		Token: *token,
@@ -95,6 +97,6 @@ func (endpoint Endpoint) Sign(ctx context.Context, req *pb.SigningRequest) (_ *p
 	}, nil
 }
 
-func internalErr(msg string) error {
-	return rpcstatus.Error(rpcstatus.Internal, Error.New(msg).Error())
+func sanitizeErr(msg string, err error) error {
+	return Error.Wrap(rpcstatus.SanitizeInternalErr(msg, err, authorization.ErrDBInternal))
 }
