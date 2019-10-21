@@ -288,7 +288,7 @@ BINARIES      := $(foreach C,$(COMPONENTLIST),$(foreach O,$(OSARCHLIST),$C_$O))
 binaries: ${BINARIES} ## Build certificates, gateway, identity, inspector, linksharing, satellite, storagenode, uplink, and versioncontrol binaries (jenkins)
 
 .PHONY: sign-windows-installer
-sign-windows-installer: 
+sign-windows-installer:
 	storj-sign release/${TAG}/storagenode_windows_amd64.msi
 
 .PHONY: libuplink
@@ -301,13 +301,6 @@ libuplink-gomobile:
 	@./lib/uplink-gomobile/build.sh
 
 ##@ Deploy
-
-.PHONY: deploy
-deploy: ## Update Kubernetes deployments in staging (jenkins)
-	for deployment in $$(kubectl --context nonprod -n v3 get deployment -l app=storagenode --output=jsonpath='{.items..metadata.name}'); do \
-		kubectl --context nonprod --namespace v3 patch deployment $$deployment -p"{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"storagenode\",\"image\":\"storjlabs/storagenode:${TAG}\"}]}}}}" ; \
-	done
-	kubectl --context nonprod --namespace v3 patch deployment earth-satellite -p"{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"satellite\",\"image\":\"storjlabs/satellite:${TAG}\"}]}}}}"
 
 .PHONY: push-images
 push-images: ## Push Docker images to Docker Hub (jenkins)
