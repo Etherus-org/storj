@@ -46,6 +46,7 @@ import (
 	"storj.io/storj/satellite/mailservice/simulate"
 	"storj.io/storj/satellite/marketingweb"
 	"storj.io/storj/satellite/metainfo"
+	"storj.io/storj/satellite/nodemgmt"
 	"storj.io/storj/satellite/nodestats"
 	"storj.io/storj/satellite/orders"
 	"storj.io/storj/satellite/overlay"
@@ -128,7 +129,8 @@ type Config struct {
 	Mail    mailservice.Config
 	Console consoleweb.Config
 
-	Marketing marketingweb.Config
+	Marketing  marketingweb.Config
+	Management nodemgmt.Config
 
 	Version version.Config
 
@@ -235,6 +237,10 @@ type Peer struct {
 
 	NodeStats struct {
 		Endpoint *nodestats.Endpoint
+	}
+
+	NodeMgmt struct {
+		Endpoint *nodemgmt.Endpoint
 	}
 
 	GracefulExit struct {
@@ -653,10 +659,25 @@ func New(log *zap.Logger, full *identity.FullIdentity, db DB, revocationDB exten
 		peer.NodeStats.Endpoint = nodestats.NewEndpoint(
 			peer.Log.Named("nodestats:endpoint"),
 			peer.Overlay.DB,
-			peer.DB.StoragenodeAccounting())
-
+			peer.DB.StoragenodeAccounting(),
+		)
 		pb.RegisterNodeStatsServer(peer.Server.GRPC(), peer.NodeStats.Endpoint)
 		pb.DRPCRegisterNodeStats(peer.Server.DRPC(), peer.NodeStats.Endpoint)
+	}
+
+	{ // setup node management endpoint
+		log.Debug("Setting up node management endpoint")
+
+		nodemgmtConfig := &config.Management
+
+		peer.NodeMgmt.Endpoint = nodemgmt.NewEndpoint(
+			nodemgmtConfig,
+			peer.Log.Named("nodemgmt:endpoint"),
+			peer.Overlay.DB,
+			peer.DB.StoragenodeAccounting(),
+		)
+		pb.RegisterNodeMgmtServer(peer.Server.GRPC(), peer.NodeMgmt.Endpoint)
+		pb.DRPCRegisterNodeMgmt(peer.Server.DRPC(), peer.NodeMgmt.Endpoint)
 	}
 
 	{ // setup graceful exit

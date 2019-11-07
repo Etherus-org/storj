@@ -29,6 +29,7 @@ import (
 	"storj.io/storj/satellite/mailservice"
 	"storj.io/storj/satellite/marketingweb"
 	"storj.io/storj/satellite/metainfo"
+	"storj.io/storj/satellite/nodemgmt"
 	"storj.io/storj/satellite/orders"
 	"storj.io/storj/satellite/overlay"
 	"storj.io/storj/satellite/repair/checker"
@@ -193,6 +194,9 @@ func (planet *Planet) newSatellites(count int) ([]*SatelliteSystem, error) {
 			Marketing: marketingweb.Config{
 				Address:   "127.0.0.1:0",
 				StaticDir: filepath.Join(developmentRoot, "web/marketing"),
+			},
+			Management: nodemgmt.Config{
+				DefaultPageSize: 10,
 			},
 			Version: planet.NewVersionConfig(),
 			GracefulExit: gracefulexit.Config{

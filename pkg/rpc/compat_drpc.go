@@ -38,6 +38,9 @@ type (
 	// NodeStatsClient is an alias to the drpc client interface
 	NodeStatsClient = pb.DRPCNodeStatsClient
 
+	// NodeMgmtClient is an alias to the drpc client interface
+	NodeMgmtClient = pb.DRPCNodeMgmtClient
+
 	// NodesClient is an alias to the drpc client interface
 	NodesClient = pb.DRPCNodesClient
 
@@ -135,6 +138,16 @@ func NewNodeStatsClient(rc *RawConn) NodeStatsClient {
 // NodeStatsClient returns a NodeStatsClient for this connection
 func (c *Conn) NodeStatsClient() NodeStatsClient {
 	return NewNodeStatsClient(c.raw)
+}
+
+// NewNodeMgmtClient returns the drpc version of a NodeMgmtClient
+func NewNodeMgmtClient(rc *RawConn) NodeMgmtClient {
+	return pb.NewDRPCNodeMgmtClient(rc)
+}
+
+// NodeMgmtClient returns a NodeMgmtClient for this connection
+func (c *Conn) NodeMgmtClient() NodeMgmtClient {
+	return NewNodeMgmtClient(c.raw)
 }
 
 // NewNodesClient returns the drpc version of a NodesClient

@@ -38,6 +38,7 @@ import (
 	"storj.io/storj/satellite/mailservice/simulate"
 	"storj.io/storj/satellite/marketingweb"
 	"storj.io/storj/satellite/metainfo"
+	"storj.io/storj/satellite/nodemgmt"
 	"storj.io/storj/satellite/nodestats"
 	"storj.io/storj/satellite/orders"
 	"storj.io/storj/satellite/overlay"
@@ -66,6 +67,8 @@ type APIConfig struct {
 	Mail      mailservice.Config
 	Console   consoleweb.Config
 	Marketing marketingweb.Config
+
+	Management nodemgmt.Config
 }
 
 // API is the satellite API process
@@ -140,6 +143,10 @@ type API struct {
 
 	NodeStats struct {
 		Endpoint *nodestats.Endpoint
+	}
+
+	NodeMgmt struct {
+		Endpoint *nodemgmt.Endpoint
 	}
 }
 
@@ -435,6 +442,7 @@ func NewAPI(log *zap.Logger, full *identity.FullIdentity, db DB, revocationDB ex
 
 	{ // setup node stats endpoint
 		log.Debug("Satellite API Process setting up node stats endpoint")
+
 		peer.NodeStats.Endpoint = nodestats.NewEndpoint(
 			peer.Log.Named("nodestats:endpoint"),
 			peer.Overlay.DB,
@@ -442,6 +450,21 @@ func NewAPI(log *zap.Logger, full *identity.FullIdentity, db DB, revocationDB ex
 		)
 		pb.RegisterNodeStatsServer(peer.Server.GRPC(), peer.NodeStats.Endpoint)
 		pb.DRPCRegisterNodeStats(peer.Server.DRPC(), peer.NodeStats.Endpoint)
+	}
+
+	{ // setup node management endpoint
+		log.Debug("Satellite API Process setting up node management endpoint")
+
+		nodemgmtConfig := &config.Management
+
+		peer.NodeMgmt.Endpoint = nodemgmt.NewEndpoint(
+			nodemgmtConfig,
+			peer.Log.Named("nodemgmt:endpoint"),
+			peer.Overlay.DB,
+			peer.DB.StoragenodeAccounting(),
+		)
+		pb.RegisterNodeMgmtServer(peer.Server.GRPC(), peer.NodeMgmt.Endpoint)
+		pb.DRPCRegisterNodeMgmt(peer.Server.DRPC(), peer.NodeMgmt.Endpoint)
 	}
 
 	return peer, nil
